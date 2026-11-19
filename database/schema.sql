@@ -37,7 +37,7 @@ CREATE TABLE libro (
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_libro_titulo ON libro(titulo);
-CREATE INDEX idx_libro_autor  ON libro(id_autor);
+CREATE INDEX idx_libro_autor ON libro(id_autor);
 
 CREATE TABLE libro_categoria (
   id_libro INTEGER NOT NULL REFERENCES libro(id_libro) ON DELETE CASCADE,
@@ -128,6 +128,12 @@ CREATE TABLE pedido_item (
   precio_unitario INTEGER NOT NULL,             -- precio al momento de la compra
   PRIMARY KEY (id_pedido, id_libro)
 );
+CREATE INDEX idx_libro_categoria_categoria ON libro_categoria(id_categoria);
+CREATE INDEX idx_biblioteca_usuario_estado ON biblioteca(id_usuario, estado);
+CREATE INDEX idx_resena_libro_fecha ON resena(id_libro, fecha DESC);
+CREATE INDEX idx_pedido_usuario_fecha ON pedido(id_usuario, creado_en DESC);
+CREATE INDEX idx_carrito_usuario ON carrito(id_usuario);
+
 -- Tarjetas del catálogo: estrellas y número de reseñas se calculan, no se guardan
 CREATE VIEW vista_catalogo AS
 SELECT l.id_libro, l.titulo, a.nombre AS autor, e.nombre AS editorial, i.nombre AS idioma,
