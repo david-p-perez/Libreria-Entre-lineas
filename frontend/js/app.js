@@ -18,7 +18,7 @@ const FOOT = `<footer><div><h3>Conócenos</h3><a href="#">Blog</a><a href="#">Ac
 function chrome(u, pg) {
   $('#hdr').innerHTML = `<input type="checkbox" id="m"><label for="m" class="ico" aria-label="Abrir menú">☰</label><label for="m" class="ov"></label>
   <nav class="side" aria-label="Menú"><label for="m" class="x">✕</label><strong>${u ? esc(u.nombre) : 'Invitado'}</strong>
-  ${u ? `<a href="biblioteca.html?estado=favorito">Favoritos</a><a href="biblioteca.html">Biblioteca</a><a href="#" id="salir">Cerrar sesión</a>`
+  ${u ? `<a href="biblioteca.html?estado=favorito">Favoritos</a><a href="biblioteca.html">Biblioteca</a> <a href="#" id="salir">Cerrar sesión</a>`
       : `<a href="acceso.html?modo=login">Iniciar sesión</a><a href="acceso.html">Crear cuenta</a>`}<a href="index.html">Inicio</a><a href="carrito.html">Cesta</a></nav>
   <form action="catalogo.html" role="search"><input type="search" name="q" value="${esc(qs().get('q') || '')}" placeholder="Título, autor o ISBN" aria-label="Buscar"><button aria-label="Buscar">🔍</button></form>
   <a href="index.html" class="logo">Entre<b>Líneas</b></a>`;
