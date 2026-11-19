@@ -1,0 +1,72 @@
+erDiagram
+  usuario ||--o{ biblioteca : guarda
+  usuario ||--o{ resena : escribe
+  usuario ||--o{ voto_resena : vota
+  usuario ||--o{ direccion : tiene
+  usuario ||--|| carrito : posee
+  usuario ||--o{ pedido : realiza
+  autor ||--o{ libro : escribe
+  editorial ||--o{ libro : publica
+  idioma ||--o{ libro : "esta en"
+  libro ||--o{ libro_categoria : clasifica
+  categoria ||--o{ libro_categoria : agrupa
+  libro ||--o{ biblioteca : "en"
+  libro ||--o{ resena : recibe
+  libro ||--o{ pregunta : tiene
+  resena ||--o{ voto_resena : recibe
+  libro ||--o{ seccion_libro : aparece
+  seccion ||--o{ seccion_libro : contiene
+  autor ||--o{ autor_del_mes : destaca
+  carrito ||--o{ carrito_item : contiene
+  libro ||--o{ carrito_item : "en"
+  pedido ||--|{ pedido_item : detalla
+  libro ||--o{ pedido_item : "en"
+  direccion ||--o{ pedido : "envia a"
+  metodo_pago ||--o{ pedido : "paga con"
+  codigo_descuento o|--o{ pedido : aplica
+  usuario { int id_usuario PK
+    string email UK
+    string nombre
+    string nombre_usuario UK
+    string contrasena_hash
+    string proveedor
+    bool acepta_terminos }
+  libro { int id_libro PK
+    string titulo
+    string isbn UK
+    int id_autor FK
+    int id_editorial FK
+    int id_idioma FK
+    string formato
+    int anio
+    int num_paginas
+    string encuadernacion
+    int precio
+    int stock
+    string portada_url }
+  resena { int id_resena PK
+    int id_usuario FK
+    int id_libro FK
+    int calificacion
+    string comentario
+    bool compra_verificada }
+  biblioteca { int id_usuario PK
+    int id_libro PK
+    string estado PK }
+  pedido { int id_pedido PK
+    int id_usuario FK
+    int id_direccion FK
+    int id_metodo FK
+    string codigo FK
+    int subtotal
+    int impuestos
+    int descuento
+    int total
+    string estado }
+  pedido_item { int id_pedido PK
+    int id_libro PK
+    int cantidad
+    int precio_unitario }
+  carrito_item { int id_carrito PK
+    int id_libro PK
+    int cantidad }
