@@ -1,47 +1,158 @@
-const r = require('express').Router(), bcrypt = require('bcryptjs'), db = require('../db'), { login } = require('../util');
-const ESTADOS = ['favorito', 'leyendo', 'lista_deseos', 'completado'];
-const pub = u => ({ id: u.id_usuario, nombre: u.nombre, email: u.email });
-const entrar = (req, res, next, u, code = 200) => req.session.regenerate(e => {
-  if (e) return next(e); req.session.uid = u.id; res.status(code).json({ usuario: u }); });
+const router = require('express').Router();
+const bcrypt = require('bcryptjs');
+const db = require('../db');
+const { ESTADOS_BIBLIOTECA, login } = require('../util');
 
-r.get('/auth/yo', (req, res) => {
-  const u = req.session.uid && db.prepare('select * from usuario where id_usuario=?').get(req.session.uid);
-  res.json({ usuario: u ? pub(u) : null });
+function usuarioPublico(usuario) {
+  return {
+    id: usuario.id_usuario,
+    nombre: usuario.nombre,
+    email: usuario.email,
+  };
+}
+
+function iniciarSesion(req, res, next, usuario, statusCode = 200) {
+  req.session.regenerate((error) => {
+    if (error) return next(error);
+
+    req.session.uid = usuario.id;
+    res.status(statusCode).json({ usuario });
+  });
+}
+
+router.get('/auth/yo', (req, res) => {
+  const usuario = req.session.uid
+    ? db.prepare('SELECT * FROM usuario WHERE id_usuario = ?').get(req.session.uid)
+    : null;
+
+  res.json({ usuario: usuario ? usuarioPublico(usuario) : null });
 });
 
-r.post('/auth/registro', (req, res, next) => {
-  const email = String(req.body.email || '').trim().toLowerCase(), nombre = String(req.body.nombre || '').trim(), clave = String(req.body.contrasena || '');
-  const err = !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? 'Correo no válido.' : !nombre ? 'El nombre es obligatorio.'
-    : clave.length < 6 || !/[A-Z]/.test(clave) ? 'La contraseña debe tener mínimo 6 caracteres y una mayúscula.'
-    : !req.body.terminos ? 'Debes aceptar los términos y condiciones.'
-    : db.prepare('select 1 from usuario where email=?').get(email) ? 'Ese correo ya está registrado.' : null;
-  if (err) return res.status(400).json({ error: err });
-  const id = db.prepare('insert into usuario(email,nombre,contrasena_hash,acepta_terminos) values(?,?,?,1)').run(email, nombre, bcrypt.hashSync(clave, 10)).lastInsertRowid;
-  entrar(req, res, next, { id: Number(id), nombre, email }, 201);
+router.post('/auth/registro', (req, res, next) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const nombre = String(req.body.nombre || '').trim();
+  const contrasena = String(req.body.contrasena || '');
+
+  const correoValido = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  const contrasenaValida = contrasena.length >= 6 && /[A-Z]/.test(contrasena);
+  const correoRegistrado = db
+    .prepare('SELECT 1 FROM usuario WHERE email = ?')
+    .get(email);
+
+  const error = !correoValido
+    ? 'Correo no válido.'
+    : !nombre
+      ? 'El nombre es obligatorio.'
+      : !contrasenaValida
+        ? 'La contraseña debe tener mínimo 6 caracteres y una mayúscula.'
+        : !req.body.terminos
+          ? 'Debes aceptar los términos y condiciones.'
+          : correoRegistrado
+            ? 'Ese correo ya está registrado.'
+            : null;
+
+  if (error) return res.status(400).json({ error });
+
+  const resultado = db
+    .prepare(`
+      INSERT INTO usuario (email, nombre, contrasena_hash, acepta_terminos)
+      VALUES (?, ?, ?, 1)
+    `)
+    .run(email, nombre, bcrypt.hashSync(contrasena, 10));
+
+  iniciarSesion(
+    req,
+    res,
+    next,
+    { id: Number(resultado.lastInsertRowid), nombre, email },
+    201,
+  );
 });
 
-r.post('/auth/login', (req, res, next) => {
-  const u = db.prepare('select * from usuario where email=?').get(String(req.body.email || '').trim().toLowerCase());
-  if (!u || !u.contrasena_hash || !bcrypt.compareSync(String(req.body.contrasena || ''), u.contrasena_hash))
+router.post('/auth/login', (req, res, next) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const contrasena = String(req.body.contrasena || '');
+  const usuario = db.prepare('SELECT * FROM usuario WHERE email = ?').get(email);
+
+  if (
+    !usuario ||
+    !usuario.contrasena_hash ||
+    !bcrypt.compareSync(contrasena, usuario.contrasena_hash)
+  ) {
     return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
-  entrar(req, res, next, pub(u));
+  }
+
+  iniciarSesion(req, res, next, usuarioPublico(usuario));
 });
 
-r.post('/auth/salir', (req, res) => req.session.destroy(() => res.json({ ok: true })));
+router.post('/auth/salir', (req, res, next) => {
+  req.session.destroy((error) => {
+    if (error) return next(error);
 
-r.get('/biblioteca', login, (req, res) => {
-  const est = ESTADOS.includes(req.query.estado) ? req.query.estado : null;
-  res.json(db.prepare(`select distinct v.* from vista_catalogo v join biblioteca b using(id_libro) where b.id_usuario=? ${est ? 'and b.estado=?' : ''}`)
-    .all(...[req.session.uid, est].filter(Boolean)));
+    res.clearCookie('connect.sid');
+    res.json({ ok: true });
+  });
 });
 
-r.post('/biblioteca/:id/:estado', login, (req, res) => {
-  const id = +req.params.id, estado = req.params.estado, k = [req.session.uid, id, estado];
-  if (!ESTADOS.includes(estado)) return res.status(400).json({ error: 'Estado no válido.' });
-  if (!db.prepare('select 1 from libro where id_libro=?').get(id)) return res.status(404).json({ error: 'Libro no encontrado.' });
-  const hay = db.prepare('select 1 from biblioteca where id_usuario=? and id_libro=? and estado=?').get(...k);
-  hay ? db.prepare('delete from biblioteca where id_usuario=? and id_libro=? and estado=?').run(...k)
-      : db.prepare('insert into biblioteca(id_usuario,id_libro,estado) values(?,?,?)').run(...k);
-  res.json({ activo: !hay });
+router.get('/biblioteca', login, (req, res) => {
+  const estado = ESTADOS_BIBLIOTECA.includes(req.query.estado)
+    ? req.query.estado
+    : null;
+
+  const filtroEstado = estado ? 'AND b.estado = ?' : '';
+  const parametros = estado ? [req.session.uid, estado] : [req.session.uid];
+
+  const libros = db
+    .prepare(`
+      SELECT DISTINCT v.*
+      FROM vista_catalogo v
+      JOIN biblioteca b USING (id_libro)
+      WHERE b.id_usuario = ? ${filtroEstado}
+      ORDER BY v.titulo
+    `)
+    .all(...parametros);
+
+  res.json(libros);
 });
-module.exports = r;
+
+router.post('/biblioteca/:id/:estado', login, (req, res) => {
+  const id = Number(req.params.id);
+  const estado = req.params.estado;
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Identificador de libro no válido.' });
+  }
+
+  if (!ESTADOS_BIBLIOTECA.includes(estado)) {
+    return res.status(400).json({ error: 'Estado no válido.' });
+  }
+
+  if (!db.prepare('SELECT 1 FROM libro WHERE id_libro = ?').get(id)) {
+    return res.status(404).json({ error: 'Libro no encontrado.' });
+  }
+
+  const parametros = [req.session.uid, id, estado];
+  const existente = db
+    .prepare(`
+      SELECT 1
+      FROM biblioteca
+      WHERE id_usuario = ? AND id_libro = ? AND estado = ?
+    `)
+    .get(...parametros);
+
+  if (existente) {
+    db.prepare(`
+      DELETE FROM biblioteca
+      WHERE id_usuario = ? AND id_libro = ? AND estado = ?
+    `).run(...parametros);
+  } else {
+    db.prepare(`
+      INSERT INTO biblioteca (id_usuario, id_libro, estado)
+      VALUES (?, ?, ?)
+    `).run(...parametros);
+  }
+
+  res.json({ activo: !existente });
+});
+
+module.exports = router;

@@ -1,60 +1,257 @@
-const r = require('express').Router(), db = require('../db'), { IVA, login } = require('../util');
-const filas = uid => db.prepare(`select l.id_libro, l.titulo, l.precio, l.stock, ci.cantidad from carrito_item ci
-  join carrito c using(id_carrito) join libro l using(id_libro) where c.id_usuario=?`).all(uid);
-const carritoId = uid => { db.prepare('insert or ignore into carrito(id_usuario) values(?)').run(uid);
-  return db.prepare('select id_carrito from carrito where id_usuario=?').get(uid).id_carrito; };
-function totales(items, codigo) {
-  const subtotal = items.reduce((s, i) => s + i.precio * i.cantidad, 0);
-  const c = codigo && db.prepare('select * from codigo_descuento where codigo=? and activo=1').get(String(codigo).toUpperCase());
-  const descuento = c ? Math.round(subtotal * c.porcentaje / 100) : 0, impuestos = Math.round((subtotal - descuento) * IVA);
-  return { subtotal, descuento, impuestos, total: subtotal - descuento + impuestos, codigo: c ? c.codigo : null };
+const router = require('express').Router();
+const db = require('../db');
+const { IVA, login } = require('../util');
+
+const consultaCarrito = db.prepare(`
+  SELECT l.id_libro, l.titulo, l.precio, l.stock, ci.cantidad
+  FROM carrito_item ci
+  JOIN carrito c USING (id_carrito)
+  JOIN libro l USING (id_libro)
+  WHERE c.id_usuario = ?
+`);
+
+const consultaCarritoId = db.prepare(
+  'SELECT id_carrito FROM carrito WHERE id_usuario = ?',
+);
+const crearCarrito = db.prepare(
+  'INSERT OR IGNORE INTO carrito (id_usuario) VALUES (?)',
+);
+
+function obtenerItems(uid) {
+  return consultaCarrito.all(uid);
 }
 
-r.get('/metodos-pago', (req, res) => res.json(db.prepare('select * from metodo_pago').all()));
+function obtenerCarritoId(uid) {
+  crearCarrito.run(uid);
+  return consultaCarritoId.get(uid).id_carrito;
+}
 
-r.get('/carrito', login, (req, res) => {
-  const items = filas(req.session.uid), cod = req.query.codigo || '', t = totales(items, cod);
-  res.json({ items, ...t, codigo_valido: !cod || !!t.codigo });
+function calcularTotales(items, codigo) {
+  const subtotal = items.reduce(
+    (total, item) => total + item.precio * item.cantidad,
+    0,
+  );
+
+  const descuentoActivo = codigo
+    ? db
+        .prepare('SELECT * FROM codigo_descuento WHERE codigo = ? AND activo = 1')
+        .get(String(codigo).trim().toUpperCase())
+    : null;
+
+  const descuento = descuentoActivo
+    ? Math.round((subtotal * descuentoActivo.porcentaje) / 100)
+    : 0;
+  const impuestos = Math.round((subtotal - descuento) * IVA);
+
+  return {
+    subtotal,
+    descuento,
+    impuestos,
+    total: subtotal - descuento + impuestos,
+    codigo: descuentoActivo ? descuentoActivo.codigo : null,
+  };
+}
+
+router.get('/metodos-pago', (req, res) => {
+  res.json(db.prepare('SELECT * FROM metodo_pago').all());
 });
 
-r.post('/carrito/:id', login, (req, res) => {
-  const id = +req.params.id, cant = Math.max(1, parseInt(req.body.cantidad) || 1), l = db.prepare('select stock from libro where id_libro=?').get(id);
-  if (!l) return res.status(404).json({ error: 'Libro no encontrado.' });
-  const cid = carritoId(req.session.uid), ya = db.prepare('select cantidad from carrito_item where id_carrito=? and id_libro=?').get(cid, id)?.cantidad || 0;
-  if (ya + cant > l.stock) return res.status(400).json({ error: `Solo quedan ${l.stock} unidades.` });
-  db.prepare(`insert into carrito_item values(?,?,?) on conflict(id_carrito,id_libro) do update set cantidad=excluded.cantidad`).run(cid, id, ya + cant);
+router.get('/carrito', login, (req, res) => {
+  const items = obtenerItems(req.session.uid);
+  const codigo = req.query.codigo || '';
+  const totales = calcularTotales(items, codigo);
+
+  res.json({
+    items,
+    ...totales,
+    codigo_valido: !codigo || Boolean(totales.codigo),
+  });
+});
+
+router.post('/carrito/:id', login, (req, res) => {
+  const id = Number(req.params.id);
+  const cantidadSolicitada = Number.parseInt(req.body.cantidad, 10);
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Identificador de libro no válido.' });
+  }
+
+  const cantidad = Number.isInteger(cantidadSolicitada) && cantidadSolicitada > 0
+    ? cantidadSolicitada
+    : 1;
+  const libro = db
+    .prepare('SELECT stock FROM libro WHERE id_libro = ?')
+    .get(id);
+
+  if (!libro) return res.status(404).json({ error: 'Libro no encontrado.' });
+
+  const carritoId = obtenerCarritoId(req.session.uid);
+  const itemExistente = db
+    .prepare(`
+      SELECT cantidad
+      FROM carrito_item
+      WHERE id_carrito = ? AND id_libro = ?
+    `)
+    .get(carritoId, id);
+  const cantidadActual = itemExistente ? itemExistente.cantidad : 0;
+
+  if (cantidadActual + cantidad > libro.stock) {
+    return res.status(400).json({
+      error: `Solo quedan ${libro.stock} unidades.`,
+    });
+  }
+
+  db.prepare(`
+    INSERT INTO carrito_item (id_carrito, id_libro, cantidad)
+    VALUES (?, ?, ?)
+    ON CONFLICT (id_carrito, id_libro)
+    DO UPDATE SET cantidad = excluded.cantidad
+  `).run(carritoId, id, cantidadActual + cantidad);
+
   res.status(201).json({ ok: true });
 });
 
-r.delete('/carrito/:id', login, (req, res) => {
-  db.prepare('delete from carrito_item where id_carrito=? and id_libro=?').run(carritoId(req.session.uid), +req.params.id);
+router.delete('/carrito/:id', login, (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Identificador de libro no válido.' });
+  }
+
+  db.prepare(`
+    DELETE FROM carrito_item
+    WHERE id_carrito = ? AND id_libro = ?
+  `).run(obtenerCarritoId(req.session.uid), id);
+
   res.json({ ok: true });
 });
 
-r.post('/pedidos', login, (req, res) => {
-  const b = req.body, uid = req.session.uid;
-  for (const k of ['destinatario', 'telefono', 'departamento', 'ciudad', 'direccion'])
-    if (!String(b[k] || '').trim()) return res.status(400).json({ error: 'Completa todos los datos de envío.' });
-  if (!db.prepare('select 1 from metodo_pago where id_metodo=?').get(+b.id_metodo)) return res.status(400).json({ error: 'Elige un método de pago.' });
-  const items = filas(uid);
-  if (!items.length) return res.status(400).json({ error: 'Tu cesta está vacía.' });
-  const sin = items.find(i => i.cantidad > i.stock);
-  if (sin) return res.status(400).json({ error: `No hay stock suficiente de "${sin.titulo}".` });
-  const t = totales(items, b.codigo);
-  const crear = db.transaction(() => {
-    const dir = db.prepare('insert into direccion(id_usuario,destinatario,telefono,departamento,ciudad,direccion) values(?,?,?,?,?,?)')
-      .run(uid, b.destinatario, b.telefono, b.departamento, b.ciudad, b.direccion).lastInsertRowid;
-    const id = db.prepare(`insert into pedido(id_usuario,id_direccion,id_metodo,codigo,subtotal,impuestos,descuento,total,estado,envio_desde,envio_hasta)
-      values(?,?,?,?,?,?,?,?,'pagado',date('now','+2 day'),date('now','+5 day'))`).run(uid, dir, +b.id_metodo, t.codigo, t.subtotal, t.impuestos, t.descuento, t.total).lastInsertRowid;
-    for (const i of items) {
-      db.prepare('insert into pedido_item values(?,?,?,?)').run(id, i.id_libro, i.cantidad, i.precio);
-      db.prepare('update libro set stock=stock-? where id_libro=?').run(i.cantidad, i.id_libro);
+router.post('/pedidos', login, (req, res) => {
+  const datos = req.body;
+  const uid = req.session.uid;
+  const camposEnvio = [
+    'destinatario',
+    'telefono',
+    'departamento',
+    'ciudad',
+    'direccion',
+  ];
+
+  const envioIncompleto = camposEnvio.some(
+    (campo) => !String(datos[campo] || '').trim(),
+  );
+
+  if (envioIncompleto) {
+    return res.status(400).json({
+      error: 'Completa todos los datos de envío.',
+    });
+  }
+
+  const metodoPagoId = Number(datos.id_metodo);
+  if (
+    !Number.isInteger(metodoPagoId) ||
+    !db.prepare('SELECT 1 FROM metodo_pago WHERE id_metodo = ?').get(metodoPagoId)
+  ) {
+    return res.status(400).json({ error: 'Elige un método de pago.' });
+  }
+
+  const items = obtenerItems(uid);
+  if (!items.length) {
+    return res.status(400).json({ error: 'Tu cesta está vacía.' });
+  }
+
+  const itemSinStock = items.find((item) => item.cantidad > item.stock);
+  if (itemSinStock) {
+    return res.status(400).json({
+      error: `No hay stock suficiente de "${itemSinStock.titulo}".`,
+    });
+  }
+
+  const totales = calcularTotales(items, datos.codigo);
+  const carritoId = obtenerCarritoId(uid);
+
+  const crearPedido = db.transaction(() => {
+    const direccionId = db
+      .prepare(`
+        INSERT INTO direccion (
+          id_usuario, destinatario, telefono, departamento, ciudad, direccion
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        uid,
+        ...camposEnvio.map((campo) => String(datos[campo]).trim()),
+      ).lastInsertRowid;
+
+    const pedidoId = db
+      .prepare(`
+        INSERT INTO pedido (
+          id_usuario, id_direccion, id_metodo, codigo, subtotal,
+          impuestos, descuento, total, estado, envio_desde, envio_hasta
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pagado', date('now', '+2 day'), date('now', '+5 day'))
+      `)
+      .run(
+        uid,
+        direccionId,
+        metodoPagoId,
+        totales.codigo,
+        totales.subtotal,
+        totales.impuestos,
+        totales.descuento,
+        totales.total,
+      ).lastInsertRowid;
+
+    const insertarItem = db.prepare(`
+      INSERT INTO pedido_item (id_pedido, id_libro, cantidad, precio_unitario)
+      VALUES (?, ?, ?, ?)
+    `);
+    const actualizarStock = db.prepare(`
+      UPDATE libro
+      SET stock = stock - ?
+      WHERE id_libro = ? AND stock >= ?
+    `);
+
+    for (const item of items) {
+      insertarItem.run(pedidoId, item.id_libro, item.cantidad, item.precio);
+
+      const resultadoStock = actualizarStock.run(
+        item.cantidad,
+        item.id_libro,
+        item.cantidad,
+      );
+
+      if (resultadoStock.changes !== 1) {
+        throw new Error(`Stock insuficiente para "${item.titulo}".`);
+      }
     }
-    db.prepare('delete from carrito_item where id_carrito=?').run(carritoId(uid));
-    return Number(id);
+
+    db.prepare('DELETE FROM carrito_item WHERE id_carrito = ?').run(carritoId);
+
+    return Number(pedidoId);
   });
-  res.status(201).json({ id_pedido: crear(), total: t.total });
+
+  try {
+    const idPedido = crearPedido();
+    res.status(201).json({ id_pedido: idPedido, total: totales.total });
+  } catch (error) {
+    if (error.message.startsWith('Stock insuficiente')) {
+      return res.status(409).json({ error: error.message });
+    }
+
+    throw error;
+  }
 });
 
-r.get('/pedidos', login, (req, res) => res.json(db.prepare('select * from pedido where id_usuario=? order by creado_en desc').all(req.session.uid)));
-module.exports = r;
+router.get('/pedidos', login, (req, res) => {
+  const pedidos = db
+    .prepare(`
+      SELECT *
+      FROM pedido
+      WHERE id_usuario = ?
+      ORDER BY creado_en DESC
+    `)
+    .all(req.session.uid);
+
+  res.json(pedidos);
+});
+
+module.exports = router;

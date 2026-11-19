@@ -1,60 +1,241 @@
-const r = require('express').Router(), db = require('../db'), { IVA, login, lista } = require('../util');
-const ORDEN = { precio_asc: 'v.precio asc', precio_desc: 'v.precio desc', calificacion: 'v.calificacion desc' };
+const router = require('express').Router();
+const db = require('../db');
+const { IVA, login, lista } = require('../util');
 
-r.get('/home', (req, res) => {
-  const secciones = db.prepare('select * from seccion order by orden').all().map(s => ({ nombre: s.nombre,
-    libros: db.prepare('select v.* from vista_catalogo v join seccion_libro sl using(id_libro) where sl.id_seccion=? order by sl.posicion').all(s.id_seccion) }));
-  const autores = db.prepare('select a.nombre, m.ambito from autor_del_mes m join autor a using(id_autor) order by m.ambito').all();
-  res.json({ secciones, autores });
-});
+const ORDENES = {
+  precio_asc: 'v.precio ASC',
+  precio_desc: 'v.precio DESC',
+  calificacion: 'v.calificacion DESC',
+};
 
-r.get('/filtros', (req, res) => res.json({
-  categorias: db.prepare('select * from categoria').all(), idiomas: db.prepare('select nombre from idioma').all(),
-  editoriales: db.prepare('select nombre from editorial').all(),
-  anios: db.prepare('select distinct anio from libro where anio is not null order by anio desc').all().map(x => x.anio) }));
+const consultas = {
+  librosDeInicio: db.prepare(`
+    SELECT
+      s.id_seccion,
+      s.nombre AS nombre_seccion,
+      v.*
+    FROM seccion s
+    LEFT JOIN seccion_libro sl USING (id_seccion)
+    LEFT JOIN vista_catalogo v USING (id_libro)
+    ORDER BY s.orden, sl.posicion
+  `),
+  autoresDelMes: db.prepare(`
+    SELECT a.nombre, m.ambito
+    FROM autor_del_mes m
+    JOIN autor a USING (id_autor)
+    ORDER BY m.ambito
+  `),
+};
 
-r.get('/libros', (req, res) => {
-  const { q = '', formato = '', categoria = '', orden = '' } = req.query, w = ['1=1'], p = [];
-  if (String(q).trim()) { w.push('(v.titulo like ? or v.autor like ? or l.isbn like ?)'); p.push(...Array(3).fill(`%${String(q).trim()}%`)); }
-  if (['fisico', 'digital'].includes(formato)) { w.push('v.formato=?'); p.push(formato); }
-  if (/^\d+$/.test(categoria)) { w.push('v.id_libro in (select id_libro from libro_categoria where id_categoria=?)'); p.push(+categoria); }
-  for (const [col, key] of [['v.idioma', 'idioma'], ['v.editorial', 'editorial'], ['v.anio', 'anio']]) {
-    const vals = lista(req.query[key]); if (vals.length) { w.push(`${col} in (${vals.map(() => '?').join(',')})`); p.push(...vals); }
+router.get('/home', (req, res) => {
+  const seccionesPorId = new Map();
+
+  for (const fila of consultas.librosDeInicio.all()) {
+    if (!seccionesPorId.has(fila.id_seccion)) {
+      seccionesPorId.set(fila.id_seccion, {
+        nombre: fila.nombre_seccion,
+        libros: [],
+      });
+    }
+
+    if (fila.id_libro !== null) {
+      const libro = { ...fila };
+      delete libro.id_seccion;
+      delete libro.nombre_seccion;
+      seccionesPorId.get(fila.id_seccion).libros.push(libro);
+    }
   }
-  const o = ORDEN[orden] || 'v.num_resenas desc, v.titulo';
-  res.json(db.prepare(`select v.* from vista_catalogo v join libro l using(id_libro) where ${w.join(' and ')} order by ${o}`).all(...p));
+
+  res.json({
+    secciones: [...seccionesPorId.values()],
+    autores: consultas.autoresDelMes.all(),
+  });
 });
 
-r.get('/libros/:id', (req, res) => {
-  const id = +req.params.id;
-  const libro = db.prepare(`select l.*, a.nombre autor, e.nombre editorial, i.nombre idioma,
-    (select group_concat(c.nombre,' | ') from libro_categoria lc join categoria c using(id_categoria) where lc.id_libro=l.id_libro) categorias
-    from libro l join autor a using(id_autor) left join editorial e using(id_editorial) join idioma i using(id_idioma) where l.id_libro=?`).get(id);
+router.get('/filtros', (req, res) => {
+  res.json({
+    categorias: db.prepare('SELECT * FROM categoria').all(),
+    idiomas: db.prepare('SELECT nombre FROM idioma').all(),
+    editoriales: db.prepare('SELECT nombre FROM editorial').all(),
+    anios: db
+      .prepare('SELECT DISTINCT anio FROM libro WHERE anio IS NOT NULL ORDER BY anio DESC')
+      .all()
+      .map(({ anio }) => anio),
+  });
+});
+
+router.get('/libros', (req, res) => {
+  const { q = '', formato = '', categoria = '', orden = '' } = req.query;
+  const condiciones = [];
+  const parametros = [];
+  const busqueda = String(q).trim();
+
+  if (busqueda) {
+    condiciones.push('(v.titulo LIKE ? OR v.autor LIKE ? OR l.isbn LIKE ?)');
+    parametros.push(...Array(3).fill(`%${busqueda}%`));
+  }
+
+  if (['fisico', 'digital'].includes(formato)) {
+    condiciones.push('v.formato = ?');
+    parametros.push(formato);
+  }
+
+  if (/^\d+$/.test(categoria)) {
+    condiciones.push(`v.id_libro IN (
+      SELECT id_libro FROM libro_categoria WHERE id_categoria = ?
+    )`);
+    parametros.push(Number(categoria));
+  }
+
+  for (const [columna, clave] of [
+    ['v.idioma', 'idioma'],
+    ['v.editorial', 'editorial'],
+    ['v.anio', 'anio'],
+  ]) {
+    const valores = lista(req.query[clave]);
+
+    if (valores.length) {
+      condiciones.push(`${columna} IN (${valores.map(() => '?').join(', ')})`);
+      parametros.push(...valores);
+    }
+  }
+
+  const where = condiciones.length ? condiciones.join(' AND ') : '1 = 1';
+  const orderBy = ORDENES[orden] || 'v.num_resenas DESC, v.titulo';
+  const libros = db
+    .prepare(`
+      SELECT v.*
+      FROM vista_catalogo v
+      JOIN libro l USING (id_libro)
+      WHERE ${where}
+      ORDER BY ${orderBy}
+    `)
+    .all(...parametros);
+
+  res.json(libros);
+});
+
+router.get('/libros/:id', (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Identificador de libro no válido.' });
+  }
+
+  const libro = db
+    .prepare(`
+      SELECT
+        l.*,
+        a.nombre AS autor,
+        e.nombre AS editorial,
+        i.nombre AS idioma,
+        (
+          SELECT group_concat(c.nombre, ' | ')
+          FROM libro_categoria lc
+          JOIN categoria c USING (id_categoria)
+          WHERE lc.id_libro = l.id_libro
+        ) AS categorias
+      FROM libro l
+      JOIN autor a USING (id_autor)
+      LEFT JOIN editorial e USING (id_editorial)
+      JOIN idioma i USING (id_idioma)
+      WHERE l.id_libro = ?
+    `)
+    .get(id);
+
   if (!libro) return res.status(404).json({ error: 'Libro no encontrado.' });
+
   libro.impuestos = Math.round(libro.precio * IVA);
-  const resenas = db.prepare(`select r.id_resena, r.calificacion, r.comentario, r.compra_verificada, r.fecha, u.nombre,
-    (select count(*) from voto_resena where id_resena=r.id_resena and es_util=1) utiles,
-    (select count(*) from voto_resena where id_resena=r.id_resena and es_util=0) no_utiles
-    from resena r join usuario u using(id_usuario) where r.id_libro=? order by r.fecha desc, r.id_resena desc`).all(id);
-  const preguntas = db.prepare('select pregunta, respuesta from pregunta where id_libro=?').all(id);
-  const mios = req.session.uid ? db.prepare('select estado from biblioteca where id_usuario=? and id_libro=?').all(req.session.uid, id).map(x => x.estado) : [];
+
+  const resenas = db
+    .prepare(`
+      SELECT
+        r.id_resena, r.calificacion, r.comentario, r.compra_verificada,
+        r.fecha, u.nombre,
+        (SELECT COUNT(*) FROM voto_resena WHERE id_resena = r.id_resena AND es_util = 1) AS utiles,
+        (SELECT COUNT(*) FROM voto_resena WHERE id_resena = r.id_resena AND es_util = 0) AS no_utiles
+      FROM resena r
+      JOIN usuario u USING (id_usuario)
+      WHERE r.id_libro = ?
+      ORDER BY r.fecha DESC, r.id_resena DESC
+    `)
+    .all(id);
+
+  const preguntas = db
+    .prepare('SELECT pregunta, respuesta FROM pregunta WHERE id_libro = ?')
+    .all(id);
+
+  const mios = req.session.uid
+    ? db
+        .prepare('SELECT estado FROM biblioteca WHERE id_usuario = ? AND id_libro = ?')
+        .all(req.session.uid, id)
+        .map(({ estado }) => estado)
+    : [];
+
   res.json({ libro, resenas, preguntas, mios });
 });
 
-r.post('/libros/:id/resenas', login, (req, res) => {
-  const id = +req.params.id, cal = +req.body.calificacion, uid = req.session.uid;
-  if (!(cal >= 1 && cal <= 5)) return res.status(400).json({ error: 'La calificación debe ser de 1 a 5.' });
-  if (!db.prepare('select 1 from libro where id_libro=?').get(id)) return res.status(404).json({ error: 'Libro no encontrado.' });
-  const ver = !!db.prepare('select 1 from pedido p join pedido_item i using(id_pedido) where p.id_usuario=? and i.id_libro=?').get(uid, id);
-  db.prepare(`insert into resena(id_usuario,id_libro,calificacion,comentario,compra_verificada) values(?,?,?,?,?)
-    on conflict(id_usuario,id_libro) do update set calificacion=excluded.calificacion, comentario=excluded.comentario`)
-    .run(uid, id, cal, String(req.body.comentario || '').slice(0, 1000), +ver);
+router.post('/libros/:id/resenas', login, (req, res) => {
+  const id = Number(req.params.id);
+  const calificacion = Number(req.body.calificacion);
+  const uid = req.session.uid;
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Identificador de libro no válido.' });
+  }
+
+  if (!Number.isInteger(calificacion) || calificacion < 1 || calificacion > 5) {
+    return res.status(400).json({ error: 'La calificación debe ser de 1 a 5.' });
+  }
+
+  if (!db.prepare('SELECT 1 FROM libro WHERE id_libro = ?').get(id)) {
+    return res.status(404).json({ error: 'Libro no encontrado.' });
+  }
+
+  const compraVerificada = Boolean(
+    db.prepare(`
+      SELECT 1
+      FROM pedido p
+      JOIN pedido_item i USING (id_pedido)
+      WHERE p.id_usuario = ? AND i.id_libro = ?
+    `).get(uid, id),
+  );
+
+  db.prepare(`
+    INSERT INTO resena (id_usuario, id_libro, calificacion, comentario, compra_verificada)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (id_usuario, id_libro) DO UPDATE SET
+      calificacion = excluded.calificacion,
+      comentario = excluded.comentario
+  `).run(
+    uid,
+    id,
+    calificacion,
+    String(req.body.comentario || '').slice(0, 1000),
+    Number(compraVerificada),
+  );
+
   res.status(201).json({ ok: true });
 });
 
-r.post('/resenas/:id/voto', login, (req, res) => {
-  if (!db.prepare('select 1 from resena where id_resena=?').get(+req.params.id)) return res.status(404).json({ error: 'Reseña no encontrada.' });
-  db.prepare('insert or replace into voto_resena values(?,?,?)').run(+req.params.id, req.session.uid, req.body.es_util ? 1 : 0);
+router.post('/resenas/:id/voto', login, (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Identificador de reseña no válido.' });
+  }
+
+  if (!db.prepare('SELECT 1 FROM resena WHERE id_resena = ?').get(id)) {
+    return res.status(404).json({ error: 'Reseña no encontrada.' });
+  }
+
+  db.prepare('INSERT OR REPLACE INTO voto_resena VALUES (?, ?, ?)').run(
+    id,
+    req.session.uid,
+    req.body.es_util ? 1 : 0,
+  );
+
   res.json({ ok: true });
 });
-module.exports = r;
+
+module.exports = router;
