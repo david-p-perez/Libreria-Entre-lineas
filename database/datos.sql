@@ -19,7 +19,7 @@ INSERT INTO libro(id_libro,titulo,isbn,id_autor,id_editorial,id_idioma,anio,num_
 (14,'El dragón',NULL,2,4,1,2023,150,'Bolsillo',188000,50,NULL),
 (15,'El día que se perdió la cordura',NULL,3,2,1,2024,220,'Rústica',110000,70,NULL),
 (16,'Mi portada de libro',NULL,4,2,1,2025,100,'Rústica',195000,50,NULL),
-(17,'El príncipe',NULL,5,5,1,2022,140,'Rústica',990000,580,NULL),
+(17,'El príncipe',NULL,5,5,1,2022,140,'Rústica',990000,580,"https://covers.openlibrary.org/b/isbn/9788420674209-L.jpg"),
 (18,'Hábitos atómicos','9788418118036',2,1,1,2020,333,'Rústica',900000,8950,'https://covers.openlibrary.org/b/isbn/9788418118036-L.jpg'),
 (19,'El zorro en el bosque',NULL,4,3,1,2024,96,'Tapa dura',670000,5870,NULL),
 (20,'El bucle',NULL,6,2,1,2024,310,'Rústica',770000,590,NULL),
