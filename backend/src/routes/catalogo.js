@@ -3,8 +3,8 @@ const db = require('../db');
 const { IVA, login, lista } = require('../util');
 
 const ORDENES = {
-  precio_asc: 'v.precio ASC',
-  precio_desc: 'v.precio DESC',
+  precio_asc: 'v.precio_final ASC',
+  precio_desc: 'v.precio_final DESC',
   calificacion: 'v.calificacion DESC',
 };
 
@@ -65,7 +65,7 @@ router.get('/filtros', (req, res) => {
 });
 
 router.get('/libros', (req, res) => {
-  const { q = '', formato = '', categoria = '', orden = '' } = req.query;
+  const { q = '', formato = '', categoria = '', orden = '', ofertas = '' } = req.query;
   const condiciones = [];
   const parametros = [];
   const busqueda = String(q).trim();
@@ -78,6 +78,10 @@ router.get('/libros', (req, res) => {
   if (['fisico', 'digital'].includes(formato)) {
     condiciones.push('v.formato = ?');
     parametros.push(formato);
+  }
+
+  if (String(ofertas) === '1') {
+    condiciones.push('v.descuento_pct > 0');
   }
 
   if (/^\d+$/.test(categoria)) {
@@ -126,6 +130,7 @@ router.get('/libros/:id', (req, res) => {
     .prepare(`
       SELECT
         l.*,
+        ROUND(l.precio * (100 - l.descuento_pct) / 100.0) AS precio_final,
         a.nombre AS autor,
         e.nombre AS editorial,
         i.nombre AS idioma,
@@ -145,7 +150,7 @@ router.get('/libros/:id', (req, res) => {
 
   if (!libro) return res.status(404).json({ error: 'Libro no encontrado.' });
 
-  libro.impuestos = Math.round(libro.precio * IVA);
+  libro.impuestos = Math.round(libro.precio_final * IVA);
 
   const resenas = db
     .prepare(`

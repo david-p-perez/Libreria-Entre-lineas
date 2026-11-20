@@ -3,7 +3,10 @@ const db = require('../db');
 const { IVA, login } = require('../util');
 
 const consultaCarrito = db.prepare(`
-  SELECT l.id_libro, l.titulo, l.precio, l.stock, ci.cantidad
+  SELECT
+    l.id_libro, l.titulo, l.precio, l.descuento_pct,
+    ROUND(l.precio * (100 - l.descuento_pct) / 100.0) AS precio_final,
+    l.stock, ci.cantidad
   FROM carrito_item ci
   JOIN carrito c USING (id_carrito)
   JOIN libro l USING (id_libro)
@@ -31,6 +34,11 @@ function calcularTotales(items, codigo) {
     (total, item) => total + item.precio * item.cantidad,
     0,
   );
+  const descuentoLibros = items.reduce(
+    (total, item) => total + (item.precio - item.precio_final) * item.cantidad,
+    0,
+  );
+  const subtotalConOfertas = subtotal - descuentoLibros;
 
   const descuentoActivo = codigo
     ? db
@@ -38,14 +46,17 @@ function calcularTotales(items, codigo) {
         .get(String(codigo).trim().toUpperCase())
     : null;
 
-  const descuento = descuentoActivo
-    ? Math.round((subtotal * descuentoActivo.porcentaje) / 100)
+  const descuentoCodigo = descuentoActivo
+    ? Math.round((subtotalConOfertas * descuentoActivo.porcentaje) / 100)
     : 0;
+  const descuento = descuentoLibros + descuentoCodigo;
   const impuestos = Math.round((subtotal - descuento) * IVA);
 
   return {
     subtotal,
     descuento,
+    descuento_libros: descuentoLibros,
+    descuento_codigo: descuentoCodigo,
     impuestos,
     total: subtotal - descuento + impuestos,
     codigo: descuentoActivo ? descuentoActivo.codigo : null,
@@ -211,7 +222,7 @@ router.post('/pedidos', login, (req, res) => {
     `);
 
     for (const item of items) {
-      insertarItem.run(pedidoId, item.id_libro, item.cantidad, item.precio);
+      insertarItem.run(pedidoId, item.id_libro, item.cantidad, item.precio_final);
 
       const resultadoStock = actualizarStock.run(
         item.cantidad,

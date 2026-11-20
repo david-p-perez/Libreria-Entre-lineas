@@ -33,6 +33,7 @@ CREATE TABLE libro (
   stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
   origen TEXT NOT NULL DEFAULT 'Colombia',
   es_nuevo INTEGER NOT NULL DEFAULT 1 CHECK (es_nuevo IN (0,1)),
+  descuento_pct INTEGER NOT NULL DEFAULT 0 CHECK (descuento_pct BETWEEN 0 AND 80),
   portada_url TEXT,
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -137,7 +138,9 @@ CREATE INDEX idx_carrito_usuario ON carrito(id_usuario);
 -- Tarjetas del catálogo: estrellas y número de reseñas se calculan, no se guardan
 CREATE VIEW vista_catalogo AS
 SELECT l.id_libro, l.titulo, a.nombre AS autor, e.nombre AS editorial, i.nombre AS idioma,
-       l.formato, l.anio, l.stock, l.precio, l.portada_url,
+       l.formato, l.anio, l.stock, l.precio, l.descuento_pct,
+       ROUND(l.precio * (100 - l.descuento_pct) / 100.0) AS precio_final,
+       l.portada_url,
        ROUND(AVG(r.calificacion),1) AS calificacion, COUNT(r.id_resena) AS num_resenas
 FROM libro l JOIN autor a USING(id_autor) JOIN idioma i USING(id_idioma)
 LEFT JOIN editorial e USING(id_editorial) LEFT JOIN resena r USING(id_libro)

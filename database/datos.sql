@@ -21,7 +21,7 @@ INSERT INTO libro(id_libro,titulo,isbn,id_autor,id_editorial,id_idioma,anio,num_
 (16,'Mi portada de libro',NULL,4,2,1,2025,100,'Rústica',195000,50,NULL),
 (17,'El príncipe',NULL,5,5,1,2022,140,'Rústica',990000,580,'https://covers.openlibrary.org/b/id/11417298-L.jpg'),
 (18,'Hábitos atómicos','9788418118036',2,1,1,2020,333,'Rústica',900000,8950,'https://covers.openlibrary.org/b/isbn/9788418118036-L.jpg'),
-(19,'El zorro en el bosque',NULL,4,3,1,2024,96,'Tapa dura',670000,5870,"C:\Users\juanl\Downloads\Libreria entre lineas\frontend\images\descarga.jpg"),
+(19,'El zorro en el bosque',NULL,4,3,1,2024,96,'Tapa dura',670000,5870,'/images/descarga.jpg'),
 (20,'El bucle',NULL,6,2,1,2024,310,'Rústica',770000,590,'https://covers.openlibrary.org/b/id/7912495-L.jpg'),
 (21,'Beast',NULL,7,5,2,2023,280,'Rústica',100000,8880,'https://covers.openlibrary.org/b/id/8212251-L.jpg');
 UPDATE libro
@@ -38,7 +38,7 @@ WHERE portada_url IS NULL OR portada_url = '';
 -- Portadas de ediciones coincidentes consultadas en Open Library.
 UPDATE libro
 SET portada_url = CASE id_libro
-  WHEN 2 THEN
+  WHEN 2 THEN 'https://covers.openlibrary.org/b/id/13798818-L.jpg'
   WHEN 3 THEN 'https://covers.openlibrary.org/b/id/13896467-L.jpg'
   WHEN 7 THEN 'https://covers.openlibrary.org/b/id/7083366-L.jpg'
   WHEN 9 THEN 'https://covers.openlibrary.org/b/id/14107855-L.jpg'
@@ -48,6 +48,14 @@ SET portada_url = CASE id_libro
   WHEN 20 THEN 'https://covers.openlibrary.org/b/id/7912495-L.jpg'
 END
 WHERE id_libro IN (2,3,7,9,10,15,17,20);
+UPDATE libro
+SET descuento_pct = CASE id_libro
+  WHEN 2 THEN 50
+  WHEN 17 THEN 30
+  WHEN 20 THEN 20
+  WHEN 21 THEN 80
+END
+WHERE id_libro IN (2,17,20,21);
 UPDATE libro SET resena='El Quinto Infierno es una novela histórica que narra la vida de Lucio Cornelio Sila, uno de los personajes más poderosos y controvertidos de la antigua Roma, desde su juventud marcada por la pobreza y los excesos hasta su ascenso en la República Romana.' WHERE id_libro=2;
 INSERT INTO libro_categoria VALUES (1,2),(2,3),(2,4),(2,5),(3,1),(4,1),(5,1),(6,4),(7,5),(8,1),(9,1),(10,1),(11,5),(12,1),(13,1),(14,2),(15,6),(16,1),(17,5),(18,4),(19,2),(20,1),(21,6);
 INSERT INTO usuario(id_usuario,email,nombre,nombre_usuario,contrasena_hash,acepta_terminos) VALUES

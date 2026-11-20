@@ -174,3 +174,14 @@ footer{margin:20px 12px 12px;padding:30px max(5vw,24px);border-radius:18px;backg
 @media(max-width:860px){.prod{grid-template-columns:1fr}.filtros{position:static}.ficha{display:grid;grid-template-columns:minmax(160px,260px) 1fr;gap:16px;align-items:start}.ficha dl{margin:0}.cat{grid-template-columns:1fr}}
 @media(max-width:540px){main{margin:16px auto 28px;padding:0 12px}.top{width:calc(100% - 20px);gap:8px;padding:8px 10px}.top form{min-width:0}.top input[type=search]{font-size:13px}.logo{padding:6px;font-size:12px}.row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.band{padding:12px}.card div.i{padding:9px}.cover{font-size:17px}.promo{min-height:155px;padding:24px 12px}.cats{grid-template-columns:1fr}.bar select{margin-left:0}.ficha{grid-template-columns:1fr}.ficha .cover{max-width:260px;width:100%;margin:auto}.reg{margin:20px auto}.reg .panel{padding:18px}.steps{justify-content:space-between;gap:8px}.steps>div{max-width:100px;text-align:center}.tbl td{padding:8px 5px}footer{margin:16px 8px 8px;padding:24px;border-radius:14px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+.promo{display:flex;align-items:center;justify-content:center}
+.promo p{margin:8px 0 16px;font-size:clamp(28px,5vw,48px)}
+.promo strong{color:#f6cb78}
+.promo .btn{font-size:15px}
+.cover{position:relative}
+.discount-badge{position:absolute;top:10px;right:10px;z-index:1;border-radius:999px;background:#b44535;color:#fff;padding:6px 9px;font:700 12px/1 Inter,system-ui,sans-serif;box-shadow:0 3px 8px rgba(0,0,0,.2)}
+.precio-rebajado{display:inline-flex;flex-direction:column;align-items:flex-end;gap:2px;line-height:1.2;white-space:nowrap}
+.precio-rebajado del{color:#77827c;font-size:.78em;font-weight:400}
+.precio-rebajado b{color:#b44535}
+.card-price{display:flex;justify-content:flex-end}
+.offer-label{color:#b44535}
