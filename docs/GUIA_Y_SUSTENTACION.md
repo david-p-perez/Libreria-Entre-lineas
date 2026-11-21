@@ -1,5 +1,7 @@
 # EntreLineas: guia de uso, arquitectura y sustentacion
-
+# DAVID PEREZ
+# PROFESOR EDGAR VERGEL
+# DESARROLLO WEB 24442
 ## 1. Descripcion general
 
 EntreLineas es una aplicacion web para explorar, buscar y comprar libros. Permite iniciar sesion, consultar el catalogo, revisar detalles de un libro, guardar productos en una biblioteca personal, agregarlos al carrito y crear pedidos.
@@ -263,62 +265,41 @@ mediante una migracion automatica y carga las ofertas iniciales.
 
 En produccion se debe configurar `SESSION_SECRET` y servir la aplicacion por HTTPS.
 
-## 9. Guion para sustentar ante una clase
+**guion -**
 
-### Duracion sugerida: 8 a 10 minutos
-
-**1. Introduccion - 1 minuto**
+**1. Introduccion - 1**
 
 "Nuestro proyecto es EntreLineas, una aplicacion web de libreria en linea desarrollada con Node.js, Express, SQLite, HTML, CSS y JavaScript. Su objetivo es permitir buscar libros, gestionar una biblioteca personal y realizar compras mediante una experiencia sencilla."
 
-**2. Arquitectura - 1 minuto**
+**2. Arquitectura - 1 **
 
 "La aplicacion tiene una arquitectura cliente-servidor. El navegador ejecuta el frontend; Express ofrece una API y entrega los archivos estaticos; y SQLite almacena usuarios, libros, carrito y pedidos."
 
-**3. Demo de inicio y registro - 1 minuto**
+**3. Demo de inicio y registro -**
 
 "En la pagina principal se cargan las secciones mediante una solicitud `/api/home`. Desde el menu podemos crear una cuenta o iniciar sesion con el usuario de prueba. La contraseña se cifra con bcrypt antes de guardarse."
 
-```text
-entrelineas-repo/
-├── backend/
-│   ├── server.js             # Configuración e inicio de Express
-│   └── src/
-│       ├── db.js              # Conexión e inicialización de SQLite
-│       ├── util.js            # Constantes y middleware compartidos
-│       └── routes/
-│           ├── catalogo.js    # Inicio, catálogo, libros y reseñas
-│           ├── compra.js      # Carrito, pagos y pedidos
-│           └── usuario.js     # Autenticación y biblioteca
-├── database/
-│   ├── schema.sql             # Tablas, índices y vista
-│   └── datos.sql              # Datos de ejemplo
-├── docs/
-│   └── diagrama_er.mermaid
-└── frontend/
-    ├── *.html                 # Una página por sección
-    ├── css/styles.css         # Estilos
-    └── js/app.js              # Interfaz y consumo de la API
-```
-**4. Demo del catalogo - 1 minuto**
+
+
+**4. Demo del catalogo -**
 
 "En catalogo podemos buscar por titulo, autor o ISBN y aplicar filtros por categoria,
 idioma, editorial, año y formato. Tambien podemos abrir el listado exclusivo de ofertas.
 JavaScript envia los parametros a `/api/libros`, el backend ejecuta una consulta y
 devuelve JSON que se convierte en tarjetas con insignia y precio rebajado."
 
-**5. Demo de producto y biblioteca - 1 minuto**
+**5. Demo de producto y biblioteca -**
 
 "Cada tarjeta abre el detalle del libro. Una ruta protegida permite agregarlo a favoritos o cambiar su estado de lectura. Las rutas protegidas necesitan una sesion activa."
 
-**6. Demo del carrito y compra - 2 minutos**
+**6. Demo del carrito y compra -**
 
 "El carrito se guarda relacionado con el usuario. Podemos modificar cantidades y crear
 un pedido. El backend calcula el subtotal, resta el descuento de los libros y el codigo
 promocional, aplica el IVA del 19 % y guarda direccion y metodo de pago. Esto ocurre
 dentro de una transaccion para evitar pedidos incompletos y cambios incorrectos en el inventario."
 
-**7. Base de datos - 1 minuto**
+**7. Base de datos -**
 
 "SQLite contiene las entidades principales del sistema. Las tablas de usuario, libro,
 biblioteca, resenas y pedidos se relacionan mediante claves primarias y foraneas. La
@@ -326,48 +307,10 @@ vista `vista_catalogo` calcula informacion derivada como el precio final y la ca
 promedio. Los registros de descuentos por libro llegan hasta 80 % y se agregan mediante
 una migracion automatica si la base es anterior."
 
-**8. Seguridad y cierre - 1 minuto**
+**8. Seguridad y cierre -**
 
 "Protegemos contraseñas, sesiones y rutas privadas. Parametrizamos las consultas y
 usamos restricciones y transacciones. En produccion exigimos `SESSION_SECRET`, habilitamos
 cookies seguras y recomendamos HTTPS. Para cerrar, EntreLineas integra una interfaz
 responsiva, una API y una base de datos para resolver un caso real de comercio electronico de libros."
 
-## 10. Preguntas probables y respuestas
-
-**¿Por que usan SQLite?**
-
-Porque es liviana, no requiere instalar un servidor independiente y permite guardar el proyecto en un archivo local.
-
-**¿Donde se valida el usuario?**
-
-El servidor verifica la sesion. Al iniciar sesion se guarda el identificador del usuario en `req.session.uid`; las rutas protegidas comprueban ese valor mediante el middleware `login`.
-
-**¿Que pasa si falla una compra?**
-
-La transaccion confirma todos los cambios solo si todas las operaciones terminan correctamente. Si ocurre un error, se revierte todo.
-
-**¿La contraseña queda visible en la base de datos?**
-
-No. Se guarda un hash generado por bcrypt. Para iniciar sesion, el servidor compara la contraseña ingresada con ese hash.
-
-**¿Como se evita que un usuario modifique datos de otro?**
-
-Las operaciones privadas usan el identificador obtenido de la sesion del usuario, no un identificador enviado libremente por el cliente para elegir la identidad.
-
-**¿Como se calcula el precio final?**
-
-La vista de catalogo toma el precio base y aplica el porcentaje de descuento configurado
-en `descuento_pct`. El frontend muestra el precio original tachado y el precio final
-cuando existe una oferta. El carrito tambien suma los descuentos individuales y luego
-puede aplicar `BIENVENIDO10` al subtotal rebajado.
-
-**¿Que cambia en una instalacion nueva frente a una base antigua?**
-
-Una base nueva carga `schema.sql` y `datos.sql`, incluyendo la columna de descuento.
-Si ya existia una base anterior, el backend agrega `descuento_pct` automaticamente,
-crea las ofertas iniciales y reconstruye la vista `vista_catalogo` con el precio final.
-
-**¿Como reiniciar el sistema?**
-
-Se elimina la base local con `npm run db:reset` y se inicia el servidor nuevamente para recrearla con los archivos SQL de ejemplo.
