@@ -74,6 +74,10 @@ entrelineas-repo/
     └── js/app.js              # Interfaz y consumo de la API
 ```
 
+## Documentación completa
+
+Consulta [docs/GUIA_Y_SUSTENTACION.md](docs/GUIA_Y_SUSTENTACION.md) para conocer el funcionamiento interno, los flujos de uso, los endpoints, la arquitectura y un guion para presentar el proyecto frente a una clase.
+
 ## Observaciones
 
 - Las consultas SQL usan parámetros para evitar concatenar valores del usuario directamente en las consultas.
