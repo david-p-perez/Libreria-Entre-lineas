@@ -36,17 +36,7 @@ SET portada_url = 'https://placehold.co/300x420/' ||
   END || '/ffffff.svg?text=' || replace(titulo, ' ', '%20')
 WHERE portada_url IS NULL OR portada_url = '';
 -- Portadas de ediciones coincidentes consultadas en Open Library.
-UPDATE libro
-SET portada_url = CASE id_libro
-  WHEN 2 THEN 'https://covers.openlibrary.org/b/id/13798818-L.jpg'
-  WHEN 3 THEN 'https://covers.openlibrary.org/b/id/13896467-L.jpg'
-  WHEN 7 THEN 'https://covers.openlibrary.org/b/id/7083366-L.jpg'
-  WHEN 9 THEN 'https://covers.openlibrary.org/b/id/14107855-L.jpg'
-  WHEN 10 THEN 'https://covers.openlibrary.org/b/id/14097086-L.jpg'
-  WHEN 15 THEN 'https://covers.openlibrary.org/b/id/8212251-L.jpg'
-  WHEN 17 THEN 'https://covers.openlibrary.org/b/id/11417298-L.jpg'
-  WHEN 20 THEN 'https://covers.openlibrary.org/b/id/7912495-L.jpg'
-END
+
 WHERE id_libro IN (2,3,7,9,10,15,17,20);
 UPDATE libro
 SET descuento_pct = CASE id_libro

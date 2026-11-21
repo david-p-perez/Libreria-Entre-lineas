@@ -12,6 +12,11 @@ La aplicacion utiliza:
 - Sesiones: `express-session`.
 - Seguridad de contraseñas: `bcryptjs`.
 
+La interfaz se entrega como un conjunto de páginas responsivas. Incluye menú lateral,
+busqueda global, catálogo con filtros, fichas de producto, biblioteca personal,
+carrito, confirmacion de pedidos y pie de pagina con informacion de contacto y redes
+sociales.
+
 ## 2. Requisitos
 
 Instalar antes de ejecutar el proyecto:
@@ -75,6 +80,19 @@ npm start
 
 `npm run db:reset` elimina los datos locales, incluido el progreso de usuarios y pedidos de prueba.
 
+Para una configuracion de produccion se pueden definir variables de entorno:
+
+```bash
+NODE_ENV=production
+SESSION_SECRET=una-frase-secreta-larga-y-aleatoria
+PORT=3000
+```
+
+En produccion el servidor exige `SESSION_SECRET`, activa la cookie segura y utiliza el
+proxy confiable. La aplicacion debe servirse mediante HTTPS. Las sesiones usan el
+almacen en memoria de `express-session`, por lo que para un despliegue real se recomienda
+un almacenamiento persistente.
+
 ## 5. Como usar la aplicacion
 
 ### Inicio
@@ -97,7 +115,11 @@ La pagina de catalogo permite:
 - Filtrar por categoria, idioma, editorial y año.
 - Mostrar libros fisicos o digitales.
 - Ordenar por relevancia, precio o calificacion.
-- Consultar ofertas.
+- Consultar ofertas mediante el filtro `Ofertas en libros seleccionados`.
+
+Los libros con descuento muestran una etiqueta con el porcentaje aplicado y comparan
+el precio original tachado con el precio final. La promocion principal anuncia hasta
+80 % de descuento y permite abrir directamente el listado de ofertas.
 
 ### Ficha de producto
 
@@ -118,10 +140,12 @@ El usuario puede cambiar cantidades, quitar productos y continuar al pago.
 Durante la confirmacion:
 
 1. Se revisan los productos y su precio.
-2. Se aplica el IVA configurado.
-3. Se puede ingresar un codigo de descuento.
-4. Se selecciona direccion y metodo de pago.
-5. Se crea el pedido dentro de una transaccion.
+2. Se calculan los descuentos individuales de los libros.
+3. Se aplica el IVA del 19 %.
+4. Se puede ingresar el codigo `BIENVENIDO10`.
+5. El descuento del codigo se calcula sobre el subtotal despues de las ofertas de los libros.
+6. Se selecciona direccion y metodo de pago.
+7. Se crea el pedido dentro de una transaccion.
 
 Si una operacion falla, SQLite revierte la transaccion completa para evitar pedidos incompletos o cambios incorrectos en el inventario.
 
@@ -180,6 +204,11 @@ Las paginas HTML contienen contenedores vacios que JavaScript llena dinamicament
 
 `frontend/css/styles.css` contiene las variables visuales, componentes, diseño responsivo y estados interactivos.
 
+La interfaz tiene una presentacion renovada: tarjetas de producto con precio rebajado,
+insignias de descuento, secciones destacadas, contenedores redondeados y un pie de
+pagina con enlaces de contacto y redes sociales. Los estilos incluyen adaptaciones para
+pantallas de hasta 860 px y 540 px, ademas de soporte para movimiento reducido.
+
 ### Base de datos
 
 Las tablas principales son:
@@ -195,6 +224,9 @@ Las tablas principales son:
 - `direccion`, `metodo_pago` y `codigo_descuento`: datos necesarios para finalizar una compra.
 
 La vista `vista_catalogo` calcula el precio final, el promedio de calificaciones y el numero de reseñas.
+La columna `descuento_pct` permite configurar ofertas por libro entre 0 % y 80 %. Si se
+abre una base creada antes de esta modificacion, `backend/src/db.js` agrega la columna
+mediante una migracion automatica y carga las ofertas iniciales.
 
 ## 7. Endpoints principales
 
@@ -208,8 +240,15 @@ La vista `vista_catalogo` calcula el precio final, el promedio de calificaciones
 | POST | `/api/auth/login` | Iniciar sesion |
 | POST | `/api/auth/salir` | Cerrar sesion |
 | GET | `/api/biblioteca` | Biblioteca del usuario |
+| GET | `/api/auth/yo` | Usuario activo en la sesion |
 | GET | `/api/carrito` | Carrito del usuario |
+| GET | `/api/metodos-pago` | Metodos de pago disponibles |
+| GET | `/api/pedidos` | Pedidos del usuario autenticado |
 | POST | `/api/pedidos` | Crear pedido |
+| POST | `/api/carrito/:id` | Agregar o sumar unidades al carrito |
+| DELETE | `/api/carrito/:id` | Quitar un producto del carrito |
+| POST | `/api/libros/:id/resenas` | Crear la reseña de un libro |
+| POST | `/api/resenas/:id/voto` | Marcar una reseña como util o no util |
 
 ## 8. Seguridad y buenas practicas
 
@@ -220,6 +259,7 @@ La vista `vista_catalogo` calcula el precio final, el promedio de calificaciones
 - Se limita el tamaño del cuerpo JSON recibido.
 - Los datos mostrados en el navegador se escapan antes de insertarlos en HTML.
 - Las claves foraneas y las restricciones de SQLite mantienen la integridad referencial.
+- En produccion se exige una variable `SESSION_SECRET`; las cookies usan `secure`, `httpOnly` y `sameSite`.
 
 En produccion se debe configurar `SESSION_SECRET` y servir la aplicacion por HTTPS.
 
@@ -239,9 +279,33 @@ En produccion se debe configurar `SESSION_SECRET` y servir la aplicacion por HTT
 
 "En la pagina principal se cargan las secciones mediante una solicitud `/api/home`. Desde el menu podemos crear una cuenta o iniciar sesion con el usuario de prueba. La contraseña se cifra con bcrypt antes de guardarse."
 
+```text
+entrelineas-repo/
+├── backend/
+│   ├── server.js             # Configuración e inicio de Express
+│   └── src/
+│       ├── db.js              # Conexión e inicialización de SQLite
+│       ├── util.js            # Constantes y middleware compartidos
+│       └── routes/
+│           ├── catalogo.js    # Inicio, catálogo, libros y reseñas
+│           ├── compra.js      # Carrito, pagos y pedidos
+│           └── usuario.js     # Autenticación y biblioteca
+├── database/
+│   ├── schema.sql             # Tablas, índices y vista
+│   └── datos.sql              # Datos de ejemplo
+├── docs/
+│   └── diagrama_er.mermaid
+└── frontend/
+    ├── *.html                 # Una página por sección
+    ├── css/styles.css         # Estilos
+    └── js/app.js              # Interfaz y consumo de la API
+```
 **4. Demo del catalogo - 1 minuto**
 
-"En catalogo podemos buscar por titulo, autor o ISBN y aplicar filtros. JavaScript envia los parametros a `/api/libros`, el backend ejecuta una consulta y devuelve JSON que se convierte en tarjetas."
+"En catalogo podemos buscar por titulo, autor o ISBN y aplicar filtros por categoria,
+idioma, editorial, año y formato. Tambien podemos abrir el listado exclusivo de ofertas.
+JavaScript envia los parametros a `/api/libros`, el backend ejecuta una consulta y
+devuelve JSON que se convierte en tarjetas con insignia y precio rebajado."
 
 **5. Demo de producto y biblioteca - 1 minuto**
 
@@ -249,15 +313,25 @@ En produccion se debe configurar `SESSION_SECRET` y servir la aplicacion por HTT
 
 **6. Demo del carrito y compra - 2 minutos**
 
-"El carrito se guarda relacionado con el usuario. Podemos modificar cantidades y crear un pedido. El backend calcula el subtotal, aplica el IVA y el descuento, guarda direccion y metodo de pago y crea los registros asociados. Esto ocurre dentro de una transaccion para evitar pedidos incompletos."
+"El carrito se guarda relacionado con el usuario. Podemos modificar cantidades y crear
+un pedido. El backend calcula el subtotal, resta el descuento de los libros y el codigo
+promocional, aplica el IVA del 19 % y guarda direccion y metodo de pago. Esto ocurre
+dentro de una transaccion para evitar pedidos incompletos y cambios incorrectos en el inventario."
 
 **7. Base de datos - 1 minuto**
 
-"SQLite contiene las entidades principales del sistema. Las tablas de usuario, libro, biblioteca, resenas y pedidos se relacionan mediante claves primarias y foraneas. La vista `vista_catalogo` calcula informacion derivada como el precio final y la calificacion promedio."
+"SQLite contiene las entidades principales del sistema. Las tablas de usuario, libro,
+biblioteca, resenas y pedidos se relacionan mediante claves primarias y foraneas. La
+vista `vista_catalogo` calcula informacion derivada como el precio final y la calificacion
+promedio. Los registros de descuentos por libro llegan hasta 80 % y se agregan mediante
+una migracion automatica si la base es anterior."
 
 **8. Seguridad y cierre - 1 minuto**
 
-"Protegemos contraseñas, sesiones y rutas privadas. Parametrizamos las consultas y usamos restricciones y transacciones. Para cerrar, EntreLineas integra frontend, API y base de datos para resolver un caso real de comercio electronico de libros."
+"Protegemos contraseñas, sesiones y rutas privadas. Parametrizamos las consultas y
+usamos restricciones y transacciones. En produccion exigimos `SESSION_SECRET`, habilitamos
+cookies seguras y recomendamos HTTPS. Para cerrar, EntreLineas integra una interfaz
+responsiva, una API y una base de datos para resolver un caso real de comercio electronico de libros."
 
 ## 10. Preguntas probables y respuestas
 
@@ -283,7 +357,16 @@ Las operaciones privadas usan el identificador obtenido de la sesion del usuario
 
 **¿Como se calcula el precio final?**
 
-La vista de catalogo toma el precio base y aplica el porcentaje de descuento configurado en `descuento_pct`. El frontend también muestra el precio original tachado cuando existe descuento.
+La vista de catalogo toma el precio base y aplica el porcentaje de descuento configurado
+en `descuento_pct`. El frontend muestra el precio original tachado y el precio final
+cuando existe una oferta. El carrito tambien suma los descuentos individuales y luego
+puede aplicar `BIENVENIDO10` al subtotal rebajado.
+
+**¿Que cambia en una instalacion nueva frente a una base antigua?**
+
+Una base nueva carga `schema.sql` y `datos.sql`, incluyendo la columna de descuento.
+Si ya existia una base anterior, el backend agrega `descuento_pct` automaticamente,
+crea las ofertas iniciales y reconstruye la vista `vista_catalogo` con el precio final.
 
 **¿Como reiniciar el sistema?**
 
